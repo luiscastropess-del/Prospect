@@ -15,7 +15,8 @@ export async function getDb() {
     ssl: 'require', // Required for Supabase in many environments
     max: 1, // Stay light for e2-micro
     idle_timeout: 20,
-    connect_timeout: 30
+    connect_timeout: 30,
+    family: 4 // FORÇA IPv4 para evitar erro ENETUNREACH (IPv6) do Google Cloud
   });
 
   // Ensure table exists on initialization
