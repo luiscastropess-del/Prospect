@@ -22,13 +22,20 @@ CREATE TABLE IF NOT EXISTS places (
   website TEXT,
   photo_url TEXT,
   rating TEXT,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  google_maps_url TEXT,
   last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- Habilitar RLS (Opcional por enquanto, mas recomendado para segurança)
--- ALTER TABLE places ENABLE ROW LEVEL SECURITY;
--- CREATE POLICY "Permitir leitura pública" ON places FOR SELECT USING (true);
--- CREATE POLICY "Permitir inserção via Anon Key" ON places FOR INSERT WITH CHECK (true);
+-- Criar Política de Inserção para permitir que o app salve os locais
+CREATE POLICY "Permitir inserção e atualização pública" 
+ON places FOR ALL 
+USING (true) 
+WITH CHECK (true);
+
+-- Caso prefira algo mais restrito, desabilite o RLS (apenas para ambiente de dev/prospecção rápida):
+-- ALTER TABLE places DISABLE ROW LEVEL SECURITY;
 ```
 
 ### 2. Preparar o Ambiente

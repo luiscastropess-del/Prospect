@@ -35,6 +35,9 @@ interface Place {
   website: string;
   photo_url: string;
   rating: string;
+  latitude?: number;
+  longitude?: number;
+  google_maps_url?: string;
   last_updated: string;
 }
 
@@ -442,9 +445,26 @@ export default function ProspectorPage() {
                       <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                         <MapIcon className="w-4 h-4" /> Localização
                       </h3>
-                      <p className="text-gray-800 font-medium leading-relaxed">
+                      <p className="text-gray-800 font-medium leading-relaxed mb-3">
                         {selectedPlace.address}
                       </p>
+                      {selectedPlace.google_maps_url && (
+                        <a 
+                          href={selectedPlace.google_maps_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all text-sm font-bold shadow-md shadow-blue-500/10"
+                        >
+                          <MapIcon className="w-4 h-4" />
+                          Traçar Rota no Google Maps
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                      {(selectedPlace.latitude && selectedPlace.longitude) && (
+                        <p className="text-[10px] text-gray-400 font-mono mt-3">
+                          Coords: {selectedPlace.latitude.toFixed(6)}, {selectedPlace.longitude.toFixed(6)}
+                        </p>
+                      )}
                     </div>
 
                     <div>
