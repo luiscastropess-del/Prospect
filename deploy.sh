@@ -5,7 +5,11 @@
 
 echo "🚀 Iniciando processo de Deploy..."
 
-# 1. Garantir que as dependências estão instaladas
+# 1. Limpar builds anteriores para evitar conflitos
+echo "🧹 Limpando cache e builds antigos..."
+rm -rf .next
+
+# 2. Garantir que as dependências estão instaladas
 echo "📦 Instalando/Verificando dependências..."
 npm install
 
