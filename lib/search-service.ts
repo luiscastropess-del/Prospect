@@ -27,8 +27,8 @@ export async function performSearch(city: string, category: string) {
     [out:json][timeout:60];
     area[name="${city}"]->.searchArea;
     (
-      node["${tagKey}"="${tagValue}"](area.searchArea);
-      way["${tagKey}"="${tagValue}"](area.searchArea);
+      node["${tagKey}"="${tagValue}"][name](area.searchArea);
+      way["${tagKey}"="${tagValue}"][name](area.searchArea);
     );
     out center 30;
   `;
@@ -37,9 +37,12 @@ export async function performSearch(city: string, category: string) {
     const response = await axios.post(OVERPASS_URL, `data=${encodeURIComponent(query)}`);
     const elements = response.data.elements || [];
 
-    const processedPlaces = elements.map((el: any) => {
+    // Filter to only include elements that have a name tag
+    const namedElements = elements.filter((el: any) => el.tags && el.tags.name);
+
+    const processedPlaces = namedElements.map((el: any) => {
       const tags = el.tags || {};
-      const name = tags.name || 'Sem nome';
+      const name = tags.name;
       // Try to construct address
       const address = [
         tags['addr:street'],

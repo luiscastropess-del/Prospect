@@ -13,7 +13,11 @@ import {
   ChevronRight,
   RefreshCcw,
   Star,
-  Info
+  Info,
+  X,
+  Map as MapIcon,
+  Calendar,
+  ExternalLink
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -39,6 +43,7 @@ export default function ProspectorPage() {
   const [category, setCategory] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
+  const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' | null }>({ text: '', type: null });
 
   const { data: places, mutate: refreshPlaces, isLoading: isLoadingPlaces } = useSWR<Place[]>('/api/places', fetcher);
@@ -244,7 +249,11 @@ export default function ProspectorPage() {
                   <tbody className="divide-y divide-gray-100">
                     {filteredPlaces.length > 0 ? (
                       filteredPlaces.map((place) => (
-                        <tr key={place.osm_id} className="hover:bg-gray-50 transition-colors group">
+                        <tr 
+                          key={place.osm_id} 
+                          onClick={() => setSelectedPlace(place)}
+                          className="hover:bg-gray-50 transition-colors group cursor-pointer"
+                        >
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               {place.photo_url ? (
@@ -336,6 +345,128 @@ export default function ProspectorPage() {
         <p>&copy; 2024 Prospector de Locais • Dados via OpenStreetMap (Overpass API)</p>
         <p className="text-xs mt-1">Otimizado para execução leve em infraestrutura e2-micro.</p>
       </footer>
+
+      {/* Modal de Detalhes */}
+      <AnimatePresence>
+        {selectedPlace && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedPlace(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="relative h-64 sm:h-80 bg-gray-200">
+                {selectedPlace.photo_url ? (
+                  <img 
+                    src={selectedPlace.photo_url} 
+                    alt={selectedPlace.name} 
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <MapPin className="w-16 h-16 text-gray-300" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                <button 
+                  onClick={() => setSelectedPlace(null)}
+                  className="absolute top-4 right-4 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full transition-all backdrop-blur-md"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+                <div className="absolute bottom-6 left-6 right-6 text-white">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-600 text-white uppercase tracking-wider">
+                      {selectedPlace.category}
+                    </span>
+                    <div className="flex items-center gap-1 bg-amber-500 px-2 py-1 rounded-full text-xs font-bold">
+                      <Star className="w-3 h-3 fill-white" />
+                      {selectedPlace.rating}
+                    </div>
+                  </div>
+                  <h2 className="text-3xl font-bold leading-tight">{selectedPlace.name}</h2>
+                </div>
+              </div>
+
+              <div className="p-6 sm:p-8 overflow-y-auto space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <MapIcon className="w-4 h-4" /> Localização
+                      </h3>
+                      <p className="text-gray-800 font-medium leading-relaxed">
+                        {selectedPlace.address}
+                      </p>
+                    </div>
+
+                    <div>
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <Phone className="w-4 h-4" /> Contato
+                      </h3>
+                      <p className="text-gray-800 font-medium">
+                        {selectedPlace.phone}
+                      </p>
+                      {selectedPlace.website !== 'Não informado' && (
+                        <a 
+                          href={selectedPlace.website.startsWith('http') ? selectedPlace.website : `https://${selectedPlace.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-blue-600 hover:underline mt-2 font-medium"
+                        >
+                          <Globe className="w-4 h-4" />
+                          Visitar Website
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <Clock className="w-4 h-4" /> Horário de Funcionamento
+                      </h3>
+                      <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                        <p className="text-gray-700 text-sm whitespace-pre-wrap leading-relaxed">
+                          {selectedPlace.opening_hours}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <Calendar className="w-4 h-4" /> Última Atualização
+                      </h3>
+                      <p className="text-gray-600 text-sm">
+                        Dados sincronizados em {format(new Date(selectedPlace.last_updated), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-gray-100">
+                  <div className="bg-blue-50 p-4 rounded-2xl flex items-start gap-3">
+                    <Info className="w-5 h-5 text-blue-600 mt-0.5" />
+                    <p className="text-sm text-blue-800 leading-relaxed">
+                      ID do OpenStreetMap: <code className="bg-blue-100 px-1.5 py-0.5 rounded font-mono text-xs">{selectedPlace.osm_id}</code>. 
+                      Estes dados são coletados publicamente e podem variar de acordo com a contribuição da comunidade.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
