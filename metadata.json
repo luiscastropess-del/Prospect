@@ -1,0 +1,6 @@
+{
+  "name": "Prospector de Locais",
+  "description": "Uma ferramenta robusta para prospecção e gerenciamento de locais comerciais usando dados do OpenStreetMap.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
