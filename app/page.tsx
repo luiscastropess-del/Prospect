@@ -22,19 +22,28 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
+import { GoogleGenAI, Type } from "@google/genai";
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
+
+// Inicialização segura do Gemini no Client-side
+const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || '' });
 
 interface Place {
   osm_id: string;
   name: string;
   category: string;
   address: string;
+  zip_code?: string;
   opening_hours: string;
   phone: string;
   website: string;
   photo_url: string;
+  logo_url?: string;
   rating: string;
+  description?: string;
+  gallery_urls?: string[];
+  reviews?: {author: string, text: string}[];
   latitude?: number;
   longitude?: number;
   google_maps_url?: string;
@@ -45,6 +54,7 @@ export default function ProspectorPage() {
   const [city, setCity] = useState('');
   const [category, setCategory] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isEnriching, setIsEnriching] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' | null }>({ text: '', type: null });
@@ -109,6 +119,115 @@ export default function ProspectorPage() {
       setMessage({ text: 'Erro de conexão com o servidor', type: 'error' });
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const handleEnrich = async (id: string) => {
+    if (!process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
+      setMessage({ text: 'Chave do Gemini não configurada. Verifique o seu .env.', type: 'error' });
+      return;
+    }
+
+    setIsEnriching(true);
+    setMessage({ text: '', type: null });
+
+    try {
+      // 1. Localizar o local no estado atual
+      const placeToEnrich = filteredPlaces.find(p => p.osm_id === id);
+      if (!placeToEnrich) throw new Error('Local não encontrado no estado local.');
+
+      // 2. Chamada direta ao Gemini Pro com Google Search Grounding (Client-side)
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        contents: `
+          Analise e encontre informações completas para o estabelecimento:
+          Nome: ${placeToEnrich.name}
+          Endereço: ${placeToEnrich.address}
+          Categoria: ${placeToEnrich.category}
+          
+          Use a pesquisa do Google para encontrar:
+          - Endereço completo com CEP (CEP/ZIP CODE).
+          - Descrição detalhada (mínimo 200 caracteres).
+          - Horário de funcionamento preciso.
+          - Website e Telefone oficiais.
+          - Logo URL e 5 URLs de fotos reais da galeria.
+          - 5 comentários reais de clientes.
+          - Avaliação média.
+        `,
+        config: {
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              full_address: { type: Type.STRING },
+              zip_code: { type: Type.STRING },
+              description: { type: Type.STRING },
+              opening_hours: { type: Type.STRING },
+              phone: { type: Type.STRING },
+              website: { type: Type.STRING },
+              logo_url: { type: Type.STRING },
+              rating: { type: Type.STRING },
+              gallery_urls: { 
+                type: Type.ARRAY, 
+                items: { type: Type.STRING } 
+              },
+              reviews: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    author: { type: Type.STRING },
+                    text: { type: Type.STRING }
+                  },
+                  required: ["author", "text"]
+                }
+              }
+            },
+            required: ["full_address", "description"]
+          }
+        }
+      });
+
+      const aiText = response.text;
+      if (!aiText) throw new Error('A IA não retornou dados válidos.');
+      const aiData = JSON.parse(aiText);
+
+      // 3. Mesclar dados e salvar no banco via API segura
+      const enrichedPlace = {
+        ...placeToEnrich,
+        address: aiData.full_address || placeToEnrich.address,
+        zip_code: aiData.zip_code || placeToEnrich.zip_code,
+        description: aiData.description || placeToEnrich.description,
+        opening_hours: aiData.opening_hours || placeToEnrich.opening_hours,
+        phone: aiData.phone || placeToEnrich.phone,
+        website: aiData.website || placeToEnrich.website,
+        logo_url: aiData.logo_url || placeToEnrich.logo_url,
+        gallery_urls: aiData.gallery_urls || [],
+        reviews: aiData.reviews || [],
+        rating: aiData.rating || placeToEnrich.rating,
+        last_updated: new Date().toISOString()
+      };
+
+      const saveRes = await fetch('/api/places/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ places: [enrichedPlace] }),
+      });
+
+      if (saveRes.ok) {
+        setMessage({ text: 'Local enriquecido com IA Pro e salvo com sucesso!', type: 'success' });
+        refreshPlaces();
+        setSelectedPlace(enrichedPlace);
+      } else {
+        const errorData = await saveRes.json();
+        throw new Error(errorData.error || 'Erro ao salvar dados enriquecidos.');
+      }
+    } catch (error: any) {
+      console.error('Erro no enriquecimento IA:', error);
+      setMessage({ text: `Falha na IA: ${error.message}`, type: 'error' });
+    } finally {
+      setIsEnriching(false);
     }
   };
 
@@ -436,18 +555,63 @@ export default function ProspectorPage() {
                   </div>
                   <h2 className="text-3xl font-bold leading-tight">{selectedPlace.name}</h2>
                 </div>
+                {isEnriching && (
+                  <div className="absolute inset-0 bg-blue-600/40 backdrop-blur-md flex items-center justify-center z-20">
+                    <div className="flex flex-col items-center gap-3 text-white">
+                      <Loader2 className="w-10 h-10 animate-spin" />
+                      <p className="font-bold">IA Enriquecendo Dados...</p>
+                      <p className="text-xs opacity-80">Usando Google Search Grounding</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-6 sm:p-8 overflow-y-auto space-y-8">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    {selectedPlace.logo_url && (
+                       <img src={selectedPlace.logo_url} alt="Logo" className="w-12 h-12 rounded-xl object-contain bg-gray-50 border border-gray-100 p-1" />
+                    )}
+                    <div>
+                      <p className="text-xs text-gray-500 font-bold uppercase">ID OSM</p>
+                      <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">{selectedPlace.osm_id}</code>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => handleEnrich(selectedPlace.osm_id)}
+                    disabled={isEnriching}
+                    className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 hover:scale-105 transition-transform flex items-center gap-2"
+                  >
+                    <RefreshCcw className={`w-4 h-4 ${isEnriching ? 'animate-spin' : ''}`} />
+                    Enriquecer com IA Pro
+                  </button>
+                </div>
+
+                {selectedPlace.description && (
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                      <Info className="w-4 h-4" /> Sobre o Estabelecimento
+                    </h3>
+                    <p className="text-gray-700 leading-relaxed italic text-sm">
+                      &quot;{selectedPlace.description}&quot;
+                    </p>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-6">
                     <div>
                       <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                         <MapIcon className="w-4 h-4" /> Localização
                       </h3>
-                      <p className="text-gray-800 font-medium leading-relaxed mb-3">
+                      <p className="text-gray-800 font-medium leading-relaxed mb-1">
                         {selectedPlace.address}
                       </p>
+                      {selectedPlace.zip_code && (
+                        <p className="text-sm text-blue-600 font-bold mb-3 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> CEP: {selectedPlace.zip_code}
+                        </p>
+                      )}
                       {selectedPlace.google_maps_url && (
                         <a 
                           href={selectedPlace.google_maps_url}
@@ -511,6 +675,35 @@ export default function ProspectorPage() {
                     </div>
                   </div>
                 </div>
+
+                {selectedPlace.gallery_urls && selectedPlace.gallery_urls.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                      <MapIcon className="w-4 h-4" /> Galeria de Imagens (IA)
+                    </h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {selectedPlace.gallery_urls.map((url, idx) => (
+                        <img key={idx} src={url} className="w-full h-24 object-cover rounded-xl bg-gray-100 hover:scale-105 transition-transform cursor-pointer" alt={`Galeria ${idx}`} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selectedPlace.reviews && selectedPlace.reviews.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                      <Star className="w-4 h-4 text-amber-500" /> Avaliações Inteligentes
+                    </h3>
+                    <div className="space-y-3">
+                      {selectedPlace.reviews.map((rev, idx) => (
+                        <div key={idx} className="bg-gray-50 border border-gray-100 p-4 rounded-2xl">
+                          <p className="text-xs font-bold text-gray-900 mb-1">{rev.author}</p>
+                          <p className="text-sm text-gray-600 italic">&quot;{rev.text}&quot;</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-6 border-t border-gray-100">
                   <div className="bg-blue-50 p-4 rounded-2xl flex items-start gap-3">
