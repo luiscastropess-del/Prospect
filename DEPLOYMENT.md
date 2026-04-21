@@ -2,8 +2,37 @@
 
 Para rodar esta aplicação em um servidor Google Cloud Compute Engine `e2-micro` (1GB RAM), siga os passos abaixo:
 
-### 1. Preparar o Ambiente
-Certifique-se de ter Node.js (v18+) instalado. Instale o PM2 globalmente:
+### 0. Configurar SWAP (CRÍTICO para 1GB RAM)
+Antes de qualquer coisa, execute o script de SWAP para garantir que o build não trave:
+```bash
+sudo chmod +x setup_swap.sh && sudo ./setup_swap.sh
+```
+
+### 1. Configurar Banco de Dados (Supabase)
+Como mudamos para o Supabase SDK, você precisa criar a tabela manualmente uma única vez no **SQL Editor** do seu painel Supabase:
+
+```sql
+CREATE TABLE IF NOT EXISTS places (
+  osm_id TEXT PRIMARY KEY,
+  name TEXT,
+  category TEXT,
+  address TEXT,
+  opening_hours TEXT,
+  phone TEXT,
+  website TEXT,
+  photo_url TEXT,
+  rating TEXT,
+  last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Habilitar RLS (Opcional por enquanto, mas recomendado para segurança)
+-- ALTER TABLE places ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "Permitir leitura pública" ON places FOR SELECT USING (true);
+-- CREATE POLICY "Permitir inserção via Anon Key" ON places FOR INSERT WITH CHECK (true);
+```
+
+### 2. Preparar o Ambiente
+Certifique-se de ter Node.js (v20+) instalado. Instale o PM2 globalmente:
 ```bash
 npm install -g pm2
 ```
