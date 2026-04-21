@@ -7,19 +7,14 @@ export async function getDb() {
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error('DATABASE_URL environment variable is not defined for Supabase connection.');
+    throw new Error('DATABASE_URL não configurada nos Secrets/Ambiente');
   }
 
-  // Initialize postgres client
   sql = postgres(connectionString, {
-    ssl: 'require', // Required for Supabase in many environments
-    max: 1, // Stay light for e2-micro
-    idle_timeout: 20,
-    connect_timeout: 30
+    ssl: 'require',
+    max: 1 // Limite de conexão para e2-micro
   });
 
-  // Ensure table exists on initialization
-  // Note: DDL in Postgres is slightly different but mostly matches
   try {
     await sql`
       CREATE TABLE IF NOT EXISTS places (
@@ -35,12 +30,9 @@ export async function getDb() {
         last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `;
-    console.log('Supabase table ensured');
   } catch (err) {
-    console.error('Failed to initialize Supabase table:', err);
+    console.error('Erro ao inicializar tabela Supabase:', err);
   }
 
   return sql;
 }
-
-// Add compatibility helpers if needed, but search-service.ts uses queries directly.
