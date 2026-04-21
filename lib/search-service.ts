@@ -27,13 +27,14 @@ export async function performSearch(city: string, category: string) {
     (
       node["${tagKey}"="${tagValue}"][name](area.searchArea);
       way["${tagKey}"="${tagValue}"][name](area.searchArea);
+      relation["${tagKey}"="${tagValue}"][name](area.searchArea);
     );
-    out center 30;
+    out center 100;
   `;
 
   try {
     const response = await axios.post(OVERPASS_URL, `data=${encodeURIComponent(query)}`, {
-      timeout: 30000, 
+      timeout: 45000, 
       headers: {
         'User-Agent': 'ProspectorLocaisApp/1.0'
       }
@@ -42,7 +43,8 @@ export async function performSearch(city: string, category: string) {
     const elements = response.data.elements || [];
     const namedElements = elements.filter((el: any) => el.tags && el.tags.name);
 
-    const processedPlaces = namedElements.map((el: any) => {
+    // Mapear e limitar aos 30 melhores resultados
+    const processedPlaces = namedElements.slice(0, 30).map((el: any) => {
       const tags = el.tags || {};
       const name = tags.name;
       const address = [
