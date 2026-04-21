@@ -57,9 +57,16 @@ Para acompanhar o uso de recursos:
 pm2 monit
 ```
 
-### 5. Configurar Cron Externo
-No Google Cloud Scheduler, crie um job:
-- **Frequência:** `*/10 * * * *` (cada 10 minutos)
-- **Target:** HTTP
-- **URL:** `https://seu-dominio.com/api/cron`
-- **Método:** GET ou POST
+### 5. Configurar Cron Externo (via cron-job.org)
+Como alternativa gratuita e simples, você pode usar o **cron-job.org** para acionar a API a cada 10 minutos:
+
+1. Acesse [cron-job.org](https://cron-job.org) e crie uma conta gratuita.
+2. Clique em **"Create cronjob"** no seu painel.
+3. Preencha os campos:
+   - **Title:** Prospector de Locais Cron
+   - **URL:** `http://34.151.205.86:3000/api/cron` (ou seu domínio se tiver configurado)
+   - **Execution schedule:** Selecione `User-defined` e marque para rodar a cada **10 minutos** (selecione todos os dias e meses).
+   - Na aba "Advanced", verifique se o **Method** está como `GET`.
+4. Clique em **"Create"**. 
+
+Pronto! O cron-job.org fará uma chamada (ping) nesse endpoint automaticamente, alimentando seu banco de dados de maneira passiva.

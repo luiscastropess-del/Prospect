@@ -33,6 +33,23 @@ export async function getAllPlaces() {
 }
 
 /**
+ * Função para buscar locais inseridos/atualizados nas últimas 24 horas.
+ */
+export async function getPlacesLast24Hours() {
+  const supabase = getSupabase();
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  
+  const { data, error } = await supabase
+    .from('places')
+    .select('*')
+    .gte('last_updated', twentyFourHoursAgo)
+    .order('last_updated', { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+/**
  * Função para inserir ou atualizar locais (Upsert).
  */
 export async function upsertPlaces(places: any[]) {

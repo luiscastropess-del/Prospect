@@ -45,6 +45,7 @@ export default function ProspectorPage() {
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' | null }>({ text: '', type: null });
+  const [isRestoring, setIsRestoring] = useState(false);
 
   const { data: placesData, mutate: refreshPlaces, isLoading: isLoadingPlaces } = useSWR<any>('/api/places', fetcher);
 
@@ -59,6 +60,24 @@ export default function ProspectorPage() {
       p.address.toLowerCase().includes(searchFilter.toLowerCase())
     );
   }, [places, searchFilter]);
+
+  const handleRestore = async () => {
+    setIsRestoring(true);
+    setMessage({ text: '', type: null });
+    try {
+      const res = await fetch('/api/result/restore', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage({ text: data.message || 'Restaurado com sucesso!', type: 'success' });
+      } else {
+        setMessage({ text: data.error || 'Erro ao restaurar', type: 'error' });
+      }
+    } catch (error) {
+      setMessage({ text: 'Erro de conexão com o servidor', type: 'error' });
+    } finally {
+      setIsRestoring(false);
+    }
+  };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,6 +121,14 @@ export default function ProspectorPage() {
             <p className="text-gray-500 mt-1">Busca inteligente e banco de dados local do OpenStreetMap.</p>
           </div>
           <div className="flex items-center gap-4">
+            <button 
+              onClick={handleRestore}
+              className="px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium text-amber-700 border-amber-200 hover:bg-amber-50"
+              disabled={isRestoring}
+            >
+              <RefreshCcw className={`w-4 h-4 ${isRestoring ? 'animate-spin' : ''}`} />
+              Restaurar API Result (24h)
+            </button>
             <button 
               onClick={() => refreshPlaces()}
               className="px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
