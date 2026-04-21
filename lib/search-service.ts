@@ -76,31 +76,24 @@ export async function performSearch(city: string, category: string) {
 
     // Save to DB
     for (const place of processedPlaces) {
-      await db.run(`
-        INSERT INTO places (osm_id, name, category, address, opening_hours, phone, website, photo_url, rating, last_updated)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(osm_id) DO UPDATE SET
-          name=excluded.name,
-          category=excluded.category,
-          address=excluded.address,
-          opening_hours=excluded.opening_hours,
-          phone=excluded.phone,
-          website=excluded.website,
-          photo_url=excluded.photo_url,
-          rating=excluded.rating,
-          last_updated=excluded.last_updated
-      `, [
-        place.osm_id,
-        place.name,
-        place.category,
-        place.address,
-        place.opening_hours,
-        place.phone,
-        place.website,
-        place.photo_url,
-        place.rating,
-        place.last_updated
-      ]);
+      await db`
+        INSERT INTO places (
+          osm_id, name, category, address, opening_hours, phone, website, photo_url, rating, last_updated
+        ) VALUES (
+          ${place.osm_id}, ${place.name}, ${place.category}, ${place.address}, ${place.opening_hours}, 
+          ${place.phone}, ${place.website}, ${place.photo_url}, ${place.rating}, ${place.last_updated}
+        )
+        ON CONFLICT (osm_id) DO UPDATE SET
+          name = EXCLUDED.name,
+          category = EXCLUDED.category,
+          address = EXCLUDED.address,
+          opening_hours = EXCLUDED.opening_hours,
+          phone = EXCLUDED.phone,
+          website = EXCLUDED.website,
+          photo_url = EXCLUDED.photo_url,
+          rating = EXCLUDED.rating,
+          last_updated = EXCLUDED.last_updated
+      `;
     }
 
     setResults(processedPlaces);

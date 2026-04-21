@@ -46,10 +46,13 @@ export default function ProspectorPage() {
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' | null }>({ text: '', type: null });
 
-  const { data: places, mutate: refreshPlaces, isLoading: isLoadingPlaces } = useSWR<Place[]>('/api/places', fetcher);
+  const { data: placesData, mutate: refreshPlaces, isLoading: isLoadingPlaces } = useSWR<any>('/api/places', fetcher);
+
+  const places = useMemo(() => {
+    return Array.isArray(placesData) ? placesData as Place[] : [];
+  }, [placesData]);
 
   const filteredPlaces = useMemo(() => {
-    if (!places) return [];
     return places.filter(p => 
       p.name.toLowerCase().includes(searchFilter.toLowerCase()) || 
       p.category.toLowerCase().includes(searchFilter.toLowerCase()) ||
@@ -202,10 +205,19 @@ export default function ProspectorPage() {
             <div className="bg-blue-600 rounded-2xl p-6 text-white shadow-lg shadow-blue-600/20">
               <div className="flex justify-between items-center mb-4">
                 <Database className="w-6 h-6 opacity-80" />
-                <span className="text-xs bg-white/20 px-2 py-1 rounded-full font-medium">SQLite Ativo</span>
+                <span className="text-xs bg-white/20 px-2 py-1 rounded-full font-medium">Supabase Ativo</span>
               </div>
-              <p className="text-2xl font-bold">{places?.length || 0}</p>
-              <p className="text-blue-100 text-sm">Locais no banco de dados</p>
+              {placesData?.error ? (
+                <div>
+                  <p className="text-sm font-bold text-red-200">Erro na conexão</p>
+                  <p className="text-[10px] opacity-70 truncate" title={placesData.error}>{placesData.error}</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-2xl font-bold">{places.length}</p>
+                  <p className="text-blue-100 text-sm">Locais no banco de dados</p>
+                </>
+              )}
             </div>
           </div>
 
