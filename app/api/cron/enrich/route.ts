@@ -61,7 +61,8 @@ async function handleEnrichCron() {
           }
         });
 
-        const aiData = JSON.parse(response.text);
+        const aiText = response.text || '{}';
+        const aiData = JSON.parse(aiText);
         
         const updatedPlace = {
           ...place,

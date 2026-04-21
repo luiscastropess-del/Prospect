@@ -375,7 +375,8 @@ export default function ProspectorPage() {
           }
         });
 
-        const aiData = JSON.parse(response.text);
+        const aiText = response.text || '{}';
+        const aiData = JSON.parse(aiText);
         
         const enriched = {
           ...place,
