@@ -31,17 +31,15 @@ async function fetchFoursquare(city: string, category: string) {
       timeout: 20000 
     });
 
-    const results = response.data.results || [];
-    
-    return results.map((el: any) => {
+    const results = (response.data.results || []).map((el: any) => {
       let photoUrl = '';
       if (el.photos && el.photos.length > 0) {
          photoUrl = `${el.photos[0].prefix}400x300${el.photos[0].suffix}`;
-      } else {
-         photoUrl = `https://picsum.photos/seed/${el.fsq_id}/400/300`;
       }
 
-      let address = el.location?.formatted_address || 'Endereço não disponível';
+      let address = el.location?.formatted_address;
+      if (!address || address.toLowerCase().includes('não disponível')) return null;
+      
       let lat = el.geocodes?.main?.latitude || null;
       let lon = el.geocodes?.main?.longitude || null;
 
@@ -62,7 +60,9 @@ async function fetchFoursquare(city: string, category: string) {
         google_maps_url: lat && lon ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}` : '',
         last_updated: new Date().toISOString()
       };
-    });
+    }).filter(Boolean);
+    
+    return results;
   } catch (error: any) {
     // Se der 410 ou 401, logamos mas não travamos a execução (permitimos o OSM rodar)
     console.error(`Erro na API Foursquare (${error.response?.status || 'network'}):`, error.message);
@@ -143,7 +143,9 @@ async function fetchOverpass(city: string, category: string) {
         const name = tags.name;
         const address = [
           tags['addr:street'], tags['addr:housenumber'], tags['addr:suburb'], tags['addr:postcode']
-        ].filter(Boolean).join(', ') || 'Endereço não disponível';
+        ].filter(Boolean).join(', ');
+        
+        if (!address) return null;
 
         const lat = el.lat || el.center?.lat;
         const lon = el.lon || el.center?.lon;
@@ -151,9 +153,6 @@ async function fetchOverpass(city: string, category: string) {
         let photoUrl = tags.image || '';
         if (!photoUrl && tags.wikimedia_commons) {
           photoUrl = `https://commons.wikimedia.org/wiki/File:${tags.wikimedia_commons}`;
-        }
-        if (!photoUrl) {
-           photoUrl = `https://picsum.photos/seed/${el.id}/400/300`;
         }
 
         return {
@@ -171,7 +170,7 @@ async function fetchOverpass(city: string, category: string) {
           google_maps_url: lat && lon ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}` : '',
           last_updated: new Date().toISOString()
         };
-      });
+      }).filter(Boolean);
     } catch (error: any) {
       console.warn(`Mirror ${mirror} falhou: ${error.message}. Tentando próximo em 2s...`);
       await new Promise(resolve => setTimeout(resolve, 2000)); // Pequena pausa entre mirrors

@@ -75,8 +75,14 @@ Como alternativa gratuita e simples, você pode usar o **cron-job.org** para aci
 1. Acesse [cron-job.org](https://cron-job.org) e crie uma conta gratuita.
 2. Clique em **"Create cronjob"** no seu painel.
 3. Preencha os campos:
-   - **Title:** Prospector de Locais Cron
-   - **URL:** `http://34.151.205.86:3000/api/cron` (ou seu domínio se tiver configurado)
+   - **Title:** Prospector Discovery (Cron)
+   - **URL:** `http://34.151.205.86:3000/api/cron`
+   - **Title:** Prospector Enrichment (Cron)
+   - **URL:** `http://34.151.205.86:3000/api/cron/enrich`
+
+### 6. Integrações Avançadas
+- **Exportar Banco:** `GET /api/places/export` (Lista JSON)
+- **Recebimento Final:** `POST /api/final` (Webhook)
    - **Execution schedule:** Selecione `User-defined` e marque para rodar a cada **10 minutos** (selecione todos os dias e meses).
    - Na aba "Advanced", verifique se o **Method** está como `GET`.
 4. Clique em **"Create"**. 

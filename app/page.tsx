@@ -17,7 +17,13 @@ import {
   X,
   Map as MapIcon,
   Calendar,
-  ExternalLink
+  ExternalLink,
+  Settings,
+  Trash2,
+  Filter,
+  ListChecks,
+  Zap,
+  CheckCircle2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -60,6 +66,10 @@ export default function ProspectorPage() {
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' | null }>({ text: '', type: null });
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isManagementOpen, setIsManagementOpen] = useState(false);
+  const [selectedPlacesIds, setSelectedPlacesIds] = useState<string[]>([]);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, status: '' });
+  const [isBulkRunning, setIsBulkRunning] = useState(false);
 
   const { data: placesData, mutate: refreshPlaces, isLoading: isLoadingPlaces } = useSWR<any>('/api/places', fetcher);
 
@@ -306,6 +316,145 @@ export default function ProspectorPage() {
     }
   };
 
+  const handleBulkEnrich = async () => {
+    const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!geminiApiKey) {
+      setMessage({ text: 'API Key do Gemini não encontrada.', type: 'error' });
+      return;
+    }
+
+    if (selectedPlacesIds.length === 0) return;
+
+    // Limite de 5 se não for o modelo Lite para evitar erros de cota (conforme solicitado)
+    let placesToProcess = selectedPlacesIds;
+    if (enrichModel !== 'gemini-3.1-flash-lite-preview' && placesToProcess.length > 5) {
+      placesToProcess = placesToProcess.slice(0, 5);
+      setMessage({ text: 'Limite de 5 locais por vez aplicado para este modelo de IA.', type: 'error' });
+    }
+
+    setIsBulkRunning(true);
+    setBulkProgress({ current: 0, total: placesToProcess.length, status: 'Iniciando fila...' });
+
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+    try {
+      for (let i = 0; i < placesToProcess.length; i++) {
+        const id = placesToProcess[i];
+        const place = places.find(p => p.osm_id === id);
+        if (!place) continue;
+
+        setBulkProgress(prev => ({ ...prev, current: i + 1, status: `Enriquecendo: ${place.name}` }));
+
+        const response = await ai.models.generateContent({
+          model: enrichModel,
+          contents: `
+            Analise e encontre informações completas para o estabelecimento:
+            Nome: ${place.name}
+            Endereço: ${place.address}
+            Categoria: ${place.category}
+            
+            Retorne um JSON com: full_address, zip_code, description, opening_hours, phone, website, logo_url, rating.
+          `,
+          config: {
+            tools: [{ googleSearch: {} }],
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                full_address: { type: Type.STRING },
+                zip_code: { type: Type.STRING },
+                description: { type: Type.STRING },
+                opening_hours: { type: Type.STRING },
+                phone: { type: Type.STRING },
+                website: { type: Type.STRING },
+                logo_url: { type: Type.STRING },
+                rating: { type: Type.STRING },
+              },
+              required: ["full_address", "description"]
+            }
+          }
+        });
+
+        const aiData = JSON.parse(response.text);
+        
+        const enriched = {
+          ...place,
+          address: aiData.full_address || place.address,
+          zip_code: aiData.zip_code || place.zip_code,
+          description: aiData.description || place.description,
+          opening_hours: aiData.opening_hours || place.opening_hours,
+          phone: aiData.phone || place.phone,
+          website: aiData.website || place.website,
+          logo_url: aiData.logo_url || place.logo_url,
+          rating: aiData.rating || place.rating,
+          last_updated: new Date().toISOString()
+        };
+
+        await fetch('/api/places/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ places: [enriched] }),
+        });
+
+        // Pequeno delay para respirar entre chamadas
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      setMessage({ text: `Enriquecimento em massa concluído (${placesToProcess.length} locais)`, type: 'success' });
+      refreshPlaces();
+      setSelectedPlacesIds([]);
+    } catch (error: any) {
+      console.error('Erro no Bulk:', error);
+      setMessage({ text: 'Erro no processamento em massa: ' + error.message, type: 'error' });
+    } finally {
+      setIsBulkRunning(false);
+      setBulkProgress({ current: 0, total: 0, status: '' });
+    }
+  };
+
+  const handleCleanup = async (type: 'no-address' | 'no-phone' | 'duplicates') => {
+    setIsBulkRunning(true);
+    setBulkProgress({ current: 0, total: 1, status: 'Analisando banco...' });
+
+    try {
+      let toDelete: string[] = [];
+      
+      if (type === 'no-address') {
+        toDelete = places.filter(p => !p.address || p.address.includes('não disponível') || p.address.length < 5).map(p => p.osm_id);
+      } else if (type === 'no-phone') {
+        toDelete = places.filter(p => p.phone === 'Não informado').map(p => p.osm_id);
+      }
+
+      if (toDelete.length > 0) {
+        setBulkProgress({ current: 0, total: toDelete.length, status: `Excluindo ${toDelete.length} registros...` });
+        
+        const res = await fetch('/api/places/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: toDelete }),
+        });
+
+        if (res.ok) {
+          setMessage({ text: `Faxina concluída! ${toDelete.length} locais removidos.`, type: 'success' });
+          refreshPlaces();
+        }
+      } else {
+        setMessage({ text: 'Nenhum local encontrado para este critério de limpeza.', type: 'success' });
+      }
+    } catch (error: any) {
+      setMessage({ text: 'Erro na limpeza: ' + error.message, type: 'error' });
+    } finally {
+      setIsBulkRunning(false);
+      setBulkProgress({ current: 0, total: 0, status: '' });
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedPlacesIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-[#212529] p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
@@ -333,8 +482,111 @@ export default function ProspectorPage() {
               <RefreshCcw className={`w-4 h-4 ${isLoadingPlaces ? 'animate-spin text-blue-600' : ''}`} />
               Atualizar Banco
             </button>
+            <button 
+              onClick={() => setIsManagementOpen(!isManagementOpen)}
+              className={`px-4 py-2 border rounded-lg transition-colors flex items-center gap-2 text-sm font-medium ${
+                isManagementOpen ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              Painel IA
+            </button>
           </div>
         </header>
+
+        <AnimatePresence>
+          {isManagementOpen && (
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="bg-gray-900 text-white rounded-2xl p-6 mb-8 shadow-xl border border-gray-800"
+            >
+              <div className="flex flex-col md:flex-row gap-8">
+                <div className="flex-1 space-y-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-500 rounded-lg">
+                      <Zap className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="font-bold text-lg">IA Management Center</h2>
+                      <p className="text-xs text-gray-400">Gerenciamento inteligente e automação de banco de dados.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+                      <p className="text-xs font-bold text-gray-500 uppercase mb-3">Enriquecimento em Massa</p>
+                      <p className="text-sm text-gray-300 mb-4">Atualiza dados detalhados via Google Search para os locais selecionados.</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-blue-400 bg-blue-400/10 px-2 py-1 rounded">
+                          Modelo: {enrichModel.includes('lite') ? 'Ilimitado (Lite)' : 'Cota Normal'}
+                        </span>
+                      </div>
+                      <button 
+                        onClick={handleBulkEnrich}
+                        disabled={selectedPlacesIds.length === 0 || isBulkRunning}
+                        className="w-full mt-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all"
+                      >
+                        <ListChecks className="w-4 h-4" />
+                        Executar Fila ({selectedPlacesIds.length})
+                      </button>
+                    </div>
+
+                    <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+                      <p className="text-xs font-bold text-gray-500 uppercase mb-3">Limpeza & Faxina IA</p>
+                      <div className="space-y-2">
+                        <button 
+                          onClick={() => handleCleanup('no-address')}
+                          disabled={isBulkRunning}
+                          className="w-full py-2 bg-gray-700 hover:bg-red-900/30 text-xs rounded-lg flex items-center justify-between px-3 transition-colors"
+                        >
+                          <span>Remover locais sem endereço</span>
+                          <Trash2 className="w-3 h-3 text-red-400" />
+                        </button>
+                        <button 
+                          onClick={() => handleCleanup('no-phone')}
+                          disabled={isBulkRunning}
+                          className="w-full py-2 bg-gray-700 hover:bg-red-900/30 text-xs rounded-lg flex items-center justify-between px-3 transition-colors"
+                        >
+                          <span>Remover locais sem telefone</span>
+                          <Trash2 className="w-3 h-3 text-red-500" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="w-full md:w-64 space-y-4">
+                  <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                    <p className="text-xs font-bold text-gray-500 uppercase mb-3">Status da Fila</p>
+                    {isBulkRunning ? (
+                      <div className="space-y-3">
+                        <div className="flex justify-between text-xs font-medium">
+                          <span className="animate-pulse text-blue-400">Processando...</span>
+                          <span>{bulkProgress.current} / {bulkProgress.total}</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                            className="bg-blue-500 h-full"
+                          />
+                        </div>
+                        <p className="text-[10px] text-gray-400 truncate">{bulkProgress.status}</p>
+                      </div>
+                    ) : (
+                      <div className="text-center py-4 text-gray-500">
+                        <CheckCircle2 className="w-8 h-8 mx-auto opacity-20 mb-2" />
+                        <p className="text-xs">Fila ociosa.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Card 1: Busca */}
@@ -475,6 +727,14 @@ export default function ProspectorPage() {
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider">
                     <tr>
+                      <th className="px-6 py-4">
+                        <button 
+                          onClick={() => setSelectedPlacesIds(selectedPlacesIds.length === filteredPlaces.length ? [] : filteredPlaces.map(p => p.osm_id))}
+                          className="p-1 hover:bg-gray-200 rounded transition-colors"
+                        >
+                          <ListChecks className={`w-4 h-4 ${selectedPlacesIds.length > 0 ? 'text-blue-600' : 'text-gray-400'}`} />
+                        </button>
+                      </th>
                       <th className="px-6 py-4">Local</th>
                       <th className="px-6 py-4">Categoria</th>
                       <th className="px-6 py-4">Contato</th>
@@ -490,6 +750,13 @@ export default function ProspectorPage() {
                           onClick={() => setSelectedPlace(place)}
                           className="hover:bg-gray-50 transition-colors group cursor-pointer"
                         >
+                          <td className="px-6 py-4" onClick={(e) => { e.stopPropagation(); toggleSelect(place.osm_id); }}>
+                            <div className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
+                              selectedPlacesIds.includes(place.osm_id) ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+                            }`}>
+                              {selectedPlacesIds.includes(place.osm_id) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                            </div>
+                          </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               {place.photo_url ? (

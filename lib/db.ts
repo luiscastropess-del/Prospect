@@ -50,6 +50,24 @@ export async function getPlacesLast24Hours() {
 }
 
 /**
+ * Função para buscar locais que precisam de enriquecimento (campos faltantes).
+ */
+export async function getPlacesNeedsEnrichment(limit = 5) {
+  const supabase = getSupabase();
+  
+  // Buscar locais onde a descrição está vazia ou o telefone é padrão
+  const { data, error } = await supabase
+    .from('places')
+    .select('*')
+    .or('description.is.null,description.eq."",phone.eq."Não informado"')
+    .limit(limit)
+    .order('last_updated', { ascending: true });
+
+  if (error) throw error;
+  return data;
+}
+
+/**
  * Função para inserir ou atualizar locais (Upsert).
  */
 export async function upsertPlaces(places: any[]) {
