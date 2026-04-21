@@ -1,12 +1,10 @@
 import axios from 'axios';
-import { getDb } from './db';
+import { upsertPlaces } from './db';
 import { setResults } from './memory';
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 
 export async function performSearch(city: string, category: string) {
-  const db = await getDb();
-
   const categoryMap: Record<string, string> = {
     'Restaurante': 'amenity=restaurant',
     'Hotel': 'tourism=hotel',
@@ -34,16 +32,19 @@ export async function performSearch(city: string, category: string) {
   `;
 
   try {
-    const response = await axios.post(OVERPASS_URL, `data=${encodeURIComponent(query)}`);
-    const elements = response.data.elements || [];
+    const response = await axios.post(OVERPASS_URL, `data=${encodeURIComponent(query)}`, {
+      timeout: 30000, 
+      headers: {
+        'User-Agent': 'ProspectorLocaisApp/1.0'
+      }
+    });
 
-    // Filter to only include elements that have a name tag
+    const elements = response.data.elements || [];
     const namedElements = elements.filter((el: any) => el.tags && el.tags.name);
 
     const processedPlaces = namedElements.map((el: any) => {
       const tags = el.tags || {};
       const name = tags.name;
-      // Try to construct address
       const address = [
         tags['addr:street'],
         tags['addr:housenumber'],
@@ -51,7 +52,6 @@ export async function performSearch(city: string, category: string) {
         tags['addr:postcode']
       ].filter(Boolean).join(', ') || 'Endereço não disponível';
 
-      // Photourl attempt
       let photoUrl = tags.image || '';
       if (!photoUrl && tags.wikimedia_commons) {
         photoUrl = `https://commons.wikimedia.org/wiki/File:${tags.wikimedia_commons}`;
@@ -74,33 +74,25 @@ export async function performSearch(city: string, category: string) {
       };
     });
 
-    // Save to DB
-    for (const place of processedPlaces) {
-      await db`
-        INSERT INTO places (
-          osm_id, name, category, address, opening_hours, phone, website, photo_url, rating, last_updated
-        ) VALUES (
-          ${place.osm_id}, ${place.name}, ${place.category}, ${place.address}, ${place.opening_hours}, 
-          ${place.phone}, ${place.website}, ${place.photo_url}, ${place.rating}, ${place.last_updated}
-        )
-        ON CONFLICT (osm_id) DO UPDATE SET
-          name = EXCLUDED.name,
-          category = EXCLUDED.category,
-          address = EXCLUDED.address,
-          opening_hours = EXCLUDED.opening_hours,
-          phone = EXCLUDED.phone,
-          website = EXCLUDED.website,
-          photo_url = EXCLUDED.photo_url,
-          rating = EXCLUDED.rating,
-          last_updated = EXCLUDED.last_updated
-      `;
+    if (processedPlaces.length > 0) {
+      await upsertPlaces(processedPlaces);
     }
 
     setResults(processedPlaces);
     return processedPlaces;
 
-  } catch (error) {
-    console.error('Error fetching from Overpass:', error);
-    throw error;
+  } catch (error: any) {
+    let errorMessage = 'Erro ao buscar dados no OpenStreetMap';
+    
+    if (error.response) {
+      errorMessage = `Overpass API erro ${error.response.status}: ${JSON.stringify(error.response.data)}`;
+    } else if (error.request) {
+      errorMessage = 'Sem resposta da Overpass API. Pode estar sobrecarregada.';
+    } else {
+      errorMessage = error.message;
+    }
+
+    console.error('Error fetching from Overpass:', errorMessage);
+    throw new Error(errorMessage);
   }
 }

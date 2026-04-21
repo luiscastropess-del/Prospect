@@ -1,47 +1,46 @@
-import postgres from 'postgres';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-let sql: postgres.Sql | null = null;
+let supabaseInstance: SupabaseClient | null = null;
 
-export async function getDb() {
-  if (sql) return sql;
+export function getSupabase(): SupabaseClient {
+  if (supabaseInstance) return supabaseInstance;
 
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error('DATABASE_URL environment variable is not defined for Supabase connection.');
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      'Configuração do Supabase ausente. Certifique-se de que NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY estão configuradas no seu arquivo .env'
+    );
   }
 
-  // Initialize postgres client
-  sql = postgres(connectionString, {
-    ssl: 'require', // Required for Supabase in many environments
-    max: 1, // Stay light for e2-micro
-    idle_timeout: 20,
-    connect_timeout: 30,
-    family: 4 // FORÇA IPv4 para evitar erro ENETUNREACH (IPv6) do Google Cloud
-  });
-
-  // Ensure table exists on initialization
-  // Note: DDL in Postgres is slightly different but mostly matches
-  try {
-    await sql`
-      CREATE TABLE IF NOT EXISTS places (
-        osm_id TEXT PRIMARY KEY,
-        name TEXT,
-        category TEXT,
-        address TEXT,
-        opening_hours TEXT,
-        phone TEXT,
-        website TEXT,
-        photo_url TEXT,
-        rating TEXT,
-        last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-    console.log('Supabase table ensured');
-  } catch (err) {
-    console.error('Failed to initialize Supabase table:', err);
-  }
-
-  return sql;
+  supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);
+  return supabaseInstance;
 }
 
-// Add compatibility helpers if needed, but search-service.ts uses queries directly.
+/**
+ * Função utilitária para buscar todos os locais salvos.
+ */
+export async function getAllPlaces() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('places')
+    .select('*')
+    .order('last_updated', { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Função para inserir ou atualizar locais (Upsert).
+ */
+export async function upsertPlaces(places: any[]) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('places')
+    .upsert(places, { onConflict: 'osm_id' });
+
+  if (error) throw error;
+  return data;
+}
