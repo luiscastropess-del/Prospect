@@ -26,8 +26,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-// Inicialização segura do Gemini no Client-side
-const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || '' });
+// Removendo inicialização global para evitar erro de detecção de chave no build/load inicial
 
 interface Place {
   osm_id: string;
@@ -55,6 +54,8 @@ export default function ProspectorPage() {
   const [category, setCategory] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [enrichModel, setEnrichModel] = useState<'gemini-3.1-flash-preview' | 'gemini-3.1-pro-preview' | 'gemini-3.1-flash-lite-preview'>('gemini-3.1-flash-preview');
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' | null }>({ text: '', type: null });
@@ -132,13 +133,19 @@ export default function ProspectorPage() {
     setMessage({ text: '', type: null });
 
     try {
+      // Inicializa aqui para garantir que a chave foi lida do ambiente
+      const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!geminiApiKey) throw new Error('API Key do Gemini não encontrada no ambiente.');
+      
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
       // 1. Localizar o local no estado atual
       const placeToEnrich = filteredPlaces.find(p => p.osm_id === id);
       if (!placeToEnrich) throw new Error('Local não encontrado no estado local.');
 
-      // 2. Chamada direta ao Gemini Pro com Google Search Grounding (Client-side)
+      // 2. Chamada direta ao modelo selecionado (Client-side)
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: enrichModel,
         contents: `
           Analise e encontre informações completas para o estabelecimento:
           Nome: ${placeToEnrich.name}
@@ -228,6 +235,74 @@ export default function ProspectorPage() {
       setMessage({ text: `Falha na IA: ${error.message}`, type: 'error' });
     } finally {
       setIsEnriching(false);
+    }
+  };
+
+  const handleSpeechSummary = async (place: Place) => {
+    const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!geminiApiKey) {
+      setMessage({ text: 'API Key do Gemini não encontrada.', type: 'error' });
+      return;
+    }
+
+    setIsSummarizing(true);
+    try {
+      const { GoogleGenAI, Modality } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+      const prompt = `Crie um briefing curto e amigável para um vendedor que vai visitar este local:
+      Nome: ${place.name}
+      Categoria: ${place.category}
+      Endereço: ${place.address}
+      Destaque: ${place.description || 'Localizado em ' + place.address}
+      Avaliação: ${place.rating} estrelas.
+      Fale em Português do Brasil com entonação profissional.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-tts-preview",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          // @ts-ignore - Modality may not be in types but is supported
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
+            },
+          },
+        },
+      });
+
+      // @ts-ignore
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        const binaryString = window.atob(base64Audio);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        // As it's 16-bit PCM Mono, we need to convert to Float32 for AudioContext
+        const pcmData = new Int16Array(bytes.buffer);
+        const floatData = new Float32Array(pcmData.length);
+        for (let i = 0; i < pcmData.length; i++) {
+          floatData[i] = pcmData[i] / 32768.0;
+        }
+
+        const audioBuffer = audioContext.createBuffer(1, floatData.length, 24000);
+        audioBuffer.getChannelData(0).set(floatData);
+
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start();
+      }
+    } catch (error: any) {
+      console.error('Erro no Speech:', error);
+      setMessage({ text: 'Falha ao gerar áudio: ' + error.message, type: 'error' });
+    } finally {
+      setIsSummarizing(false);
     }
   };
 
@@ -577,14 +652,42 @@ export default function ProspectorPage() {
                       <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">{selectedPlace.osm_id}</code>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => handleEnrich(selectedPlace.osm_id)}
-                    disabled={isEnriching}
-                    className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 hover:scale-105 transition-transform flex items-center gap-2"
-                  >
-                    <RefreshCcw className={`w-4 h-4 ${isEnriching ? 'animate-spin' : ''}`} />
-                    Enriquecer com IA Pro
-                  </button>
+                  
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <select 
+                        value={enrichModel}
+                        onChange={(e: any) => setEnrichModel(e.target.value)}
+                        className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
+                        title="Selecione o modelo de IA"
+                      >
+                        <option value="gemini-3.1-flash-lite-preview">Flash Lite (Rápido)</option>
+                        <option value="gemini-3.1-flash-preview">Flash (Padrão)</option>
+                        <option value="gemini-3.1-pro-preview">Pro (Inteligente)</option>
+                      </select>
+                      <button 
+                        onClick={() => handleEnrich(selectedPlace.osm_id)}
+                        disabled={isEnriching}
+                        className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 hover:scale-105 transition-transform flex items-center gap-2"
+                      >
+                        <RefreshCcw className={`w-4 h-4 ${isEnriching ? 'animate-spin' : ''}`} />
+                        Enriquecer IA
+                      </button>
+                    </div>
+                    
+                    <button 
+                      onClick={() => handleSpeechSummary(selectedPlace)}
+                      disabled={isSummarizing}
+                      className="px-6 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl font-bold text-xs hover:bg-amber-100 transition-colors flex items-center justify-center gap-2"
+                    >
+                      {isSummarizing ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Globe className="w-3 h-3" />
+                      )}
+                      {isSummarizing ? 'Gerando Áudio...' : 'Ouvir Briefing de Venda (TTS)'}
+                    </button>
+                  </div>
                 </div>
 
                 {selectedPlace.description && (

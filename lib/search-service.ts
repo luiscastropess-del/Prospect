@@ -25,8 +25,8 @@ async function fetchFoursquare(city: string, category: string) {
         near: city,
         query: category,
         limit: 30,
-        // Removendo 'rating' se estiver causando 410 em algumas contas, ou mantendo o básico
-        fields: 'fsq_id,name,categories,location,hours,tel,website,photos,geocodes,rating'
+        // Simplificando campos para evitar erro 410 (Gone) em algumas regiões/contas
+        fields: 'fsq_id,name,categories,location,tel,website,geocodes'
       },
       timeout: 20000 
     });
@@ -128,7 +128,7 @@ async function fetchOverpass(city: string, category: string) {
   for (const mirror of OVERPASS_MIRRORS) {
     try {
       const response = await axios.post(mirror, `data=${encodeURIComponent(query)}`, {
-        timeout: 45000, 
+        timeout: 60000, 
         headers: {
           'User-Agent': 'ProspectorLocaisApp/1.0',
           'Content-Type': 'application/x-www-form-urlencoded'
@@ -173,7 +173,8 @@ async function fetchOverpass(city: string, category: string) {
         };
       });
     } catch (error: any) {
-      console.warn(`Mirror ${mirror} falhou: ${error.message}. Tentando próximo...`);
+      console.warn(`Mirror ${mirror} falhou: ${error.message}. Tentando próximo em 2s...`);
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Pequena pausa entre mirrors
       continue;
     }
   }
