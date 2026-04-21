@@ -55,7 +55,7 @@ export default function ProspectorPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const [enrichModel, setEnrichModel] = useState<'gemini-3.1-flash-preview' | 'gemini-3.1-pro-preview' | 'gemini-3.1-flash-lite-preview'>('gemini-3.1-flash-preview');
+  const [enrichModel, setEnrichModel] = useState<'gemini-flash-latest' | 'gemini-3.1-pro-preview' | 'gemini-3.1-flash-lite-preview'>('gemini-flash-latest');
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' | null }>({ text: '', type: null });
@@ -661,9 +661,9 @@ export default function ProspectorPage() {
                         className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
                         title="Selecione o modelo de IA"
                       >
-                        <option value="gemini-3.1-flash-lite-preview">Flash Lite (Rápido)</option>
-                        <option value="gemini-3.1-flash-preview">Flash (Padrão)</option>
-                        <option value="gemini-3.1-pro-preview">Pro (Inteligente)</option>
+                        <option value="gemini-3.1-flash-lite-preview">Flash Lite (Ilimitado/Rápido)</option>
+                        <option value="gemini-flash-latest">Flash Latest (Ilimitado/Padrão)</option>
+                        <option value="gemini-3.1-pro-preview">Pro (Ilimitado/Inteligente)</option>
                       </select>
                       <button 
                         onClick={() => handleEnrich(selectedPlace.osm_id)}
