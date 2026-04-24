@@ -25,6 +25,8 @@ async function fetchFoursquare(city: string, category: string) {
         near: city,
         query: category,
         limit: 30,
+        // Limitar ao Brasil
+        region: 'BR',
         // Simplificando campos para evitar erro 410 (Gone) em algumas regiões/contas
         fields: 'fsq_id,name,categories,location,tel,website,geocodes'
       },
@@ -37,8 +39,16 @@ async function fetchFoursquare(city: string, category: string) {
          photoUrl = `${el.photos[0].prefix}400x300${el.photos[0].suffix}`;
       }
 
-      let address = el.location?.formatted_address;
+      const loc = el.location;
+      // Validar endereço completo (Cidade, Estado, CEP) e país Brasil
+      if (!loc || loc.country !== 'BR') return null;
+      
+      const address = loc.formatted_address;
       if (!address || address.toLowerCase().includes('não disponível')) return null;
+
+      // Garantir que temos os componentes do endereço
+      const hasFullAddress = loc.locality && loc.region && loc.postcode;
+      if (!hasFullAddress) return null;
       
       let lat = el.geocodes?.main?.latitude || null;
       let lon = el.geocodes?.main?.longitude || null;
@@ -115,7 +125,8 @@ async function fetchOverpass(city: string, category: string) {
 
   const query = `
     [out:json][timeout:90];
-    area[name="${city}"]->.searchArea;
+    area["ISO3166-1"="BR"]->.brazil;
+    area[name="${city}"](area.brazil)->.searchArea;
     (
       node["${tagKey}"="${tagValue}"][name](area.searchArea);
       way["${tagKey}"="${tagValue}"][name](area.searchArea);
@@ -141,11 +152,17 @@ async function fetchOverpass(city: string, category: string) {
       return namedElements.map((el: any) => {
         const tags = el.tags || {};
         const name = tags.name;
-        const address = [
-          tags['addr:street'], tags['addr:housenumber'], tags['addr:suburb'], tags['addr:postcode']
-        ].filter(Boolean).join(', ');
         
-        if (!address) return null;
+        // Validar endereço completo (Cidade, Estado, CEP)
+        const cityTag = tags['addr:city'];
+        const stateTag = tags['addr:state'];
+        const postcodeTag = tags['addr:postcode'];
+        
+        if (!cityTag || !stateTag || !postcodeTag) return null;
+
+        const address = [
+          tags['addr:street'], tags['addr:housenumber'], tags['addr:suburb'], cityTag, stateTag, postcodeTag
+        ].filter(Boolean).join(', ');
 
         const lat = el.lat || el.center?.lat;
         const lon = el.lon || el.center?.lon;

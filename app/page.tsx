@@ -157,19 +157,21 @@ export default function ProspectorPage() {
       const response = await ai.models.generateContent({
         model: enrichModel,
         contents: `
-          Analise e encontre informações completas para o estabelecimento:
+          Analise o estabelecimento localizado no BRASIL e encontre as informações completas:
           Nome: ${placeToEnrich.name}
           Endereço: ${placeToEnrich.address}
           Categoria: ${placeToEnrich.category}
           
-          Use a pesquisa do Google para encontrar:
-          - Endereço completo com CEP (CEP/ZIP CODE).
+          Use a pesquisa do Google para encontrar obrigatoriamente:
+          - Endereço completo com Cidade, Estado e CEP (CEP/ZIP CODE).
           - Descrição detalhada (mínimo 200 caracteres).
           - Horário de funcionamento preciso.
           - Website e Telefone oficiais.
-          - Logo URL e 5 URLs de fotos reais da galeria.
+          - Logo URL e 5 URLs de fotos reais da galeria do local.
           - 5 comentários reais de clientes.
           - Avaliação média.
+          
+          Se o local não for no Brasil, ignore e retorne JSON vazio.
         `,
         config: {
           tools: [{ googleSearch: {} }],
@@ -178,6 +180,8 @@ export default function ProspectorPage() {
             type: Type.OBJECT,
             properties: {
               full_address: { type: Type.STRING },
+              city: { type: Type.STRING },
+              state: { type: Type.STRING },
               zip_code: { type: Type.STRING },
               description: { type: Type.STRING },
               opening_hours: { type: Type.STRING },
@@ -201,7 +205,7 @@ export default function ProspectorPage() {
                 }
               }
             },
-            required: ["full_address", "description"]
+            required: ["full_address", "city", "state", "zip_code", "description"]
           }
         }
       });
@@ -209,6 +213,10 @@ export default function ProspectorPage() {
       const aiText = response.text;
       if (!aiText) throw new Error('A IA não retornou dados válidos.');
       const aiData = JSON.parse(aiText);
+
+      if (!aiData.city || !aiData.state || !aiData.zip_code) {
+        throw new Error('A IA não conseguiu encontrar o endereço completo (Cidade, Estado, CEP) no Brasil.');
+      }
 
       // 3. Mesclar dados e salvar no banco via API segura
       const enrichedPlace = {
@@ -348,12 +356,13 @@ export default function ProspectorPage() {
         const response = await ai.models.generateContent({
           model: enrichModel,
           contents: `
-            Analise e encontre informações completas para o estabelecimento:
+            Analise o estabelecimento localizado no BRASIL e encontre as informações completas:
             Nome: ${place.name}
             Endereço: ${place.address}
             Categoria: ${place.category}
             
-            Retorne um JSON com: full_address, zip_code, description, opening_hours, phone, website, logo_url, rating.
+            Retorne um JSON completo incluindo Cidade, Estado e CEP (CEP/ZIP CODE).
+            Se o local não for no Brasil, ignore.
           `,
           config: {
             tools: [{ googleSearch: {} }],
@@ -362,6 +371,8 @@ export default function ProspectorPage() {
               type: Type.OBJECT,
               properties: {
                 full_address: { type: Type.STRING },
+                city: { type: Type.STRING },
+                state: { type: Type.STRING },
                 zip_code: { type: Type.STRING },
                 description: { type: Type.STRING },
                 opening_hours: { type: Type.STRING },
@@ -370,13 +381,17 @@ export default function ProspectorPage() {
                 logo_url: { type: Type.STRING },
                 rating: { type: Type.STRING },
               },
-              required: ["full_address", "description"]
+              required: ["full_address", "city", "state", "zip_code", "description"]
             }
           }
         });
 
         const aiText = response.text || '{}';
         const aiData = JSON.parse(aiText);
+
+        if (!aiData.city || !aiData.state || !aiData.zip_code) {
+          continue; // Pular locais incompletos ou fora do Brasil
+        }
         
         const enriched = {
           ...place,

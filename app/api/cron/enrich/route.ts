@@ -35,12 +35,15 @@ async function handleEnrichCron() {
         const response = await ai.models.generateContent({
           model: "gemini-3.1-flash-lite-preview",
           contents: `
-            Encontre informações detalhadas para o estabelecimento:
+            Analise o estabelecimento localizado no BRASIL e encontre as informações faltantes:
             Nome: ${place.name}
-            Endereço: ${place.address}
+            Endereço Atual: ${place.address}
             Categoria: ${place.category}
             
-            Retorne JSON: zip_code, description (min 200 char), opening_hours, phone, website, logo_url, rating.
+            IMPORTANTE: O endereço deve ser completo (Logradouro, Número, Bairro, Cidade, Estado e CEP).
+            Se o local não for no Brasil, retorne campos vazios e ignore.
+            
+            Retorne JSON: full_address, city, state, zip_code, description (min 200 char), opening_hours, phone, website, logo_url, rating.
           `,
           config: {
             tools: [{ googleSearch: {} }],
@@ -48,6 +51,9 @@ async function handleEnrichCron() {
             responseSchema: {
               type: Type.OBJECT,
               properties: {
+                full_address: { type: Type.STRING },
+                city: { type: Type.STRING },
+                state: { type: Type.STRING },
                 zip_code: { type: Type.STRING },
                 description: { type: Type.STRING },
                 opening_hours: { type: Type.STRING },
@@ -56,16 +62,23 @@ async function handleEnrichCron() {
                 logo_url: { type: Type.STRING },
                 rating: { type: Type.STRING },
               },
-              required: ["description"]
+              required: ["full_address", "city", "state", "zip_code", "description"]
             }
           }
         });
 
         const aiText = response.text || '{}';
         const aiData = JSON.parse(aiText);
+
+        // Se a IA não retornou cidade/estado/cep (campo obrigatório no schema), ignoramos prospecção incompleta
+        if (!aiData.city || !aiData.state || !aiData.zip_code) {
+          console.warn(`Local ${place.name} ignorado por falta de endereço completo na IA.`);
+          continue; 
+        }
         
         const updatedPlace = {
           ...place,
+          address: aiData.full_address || place.address,
           zip_code: aiData.zip_code || place.zip_code,
           description: aiData.description || place.description,
           opening_hours: aiData.opening_hours || place.opening_hours,
