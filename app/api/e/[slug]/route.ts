@@ -3,10 +3,10 @@ import { getSupabase, getPlacesByFilter } from '@/lib/db';
 
 export async function GET(
   request: Request,
-  { params }: { params: { slug: string } }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const slug = params.slug;
+    const { slug } = await params;
     const supabase = getSupabase();
 
     // 1. Buscar a configuração do endpoint
