@@ -61,7 +61,7 @@ export default function ProspectorPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const [enrichModel, setEnrichModel] = useState<'gemini-flash-latest' | 'gemini-3.1-pro-preview' | 'gemini-3.1-flash-lite-preview'>('gemini-flash-latest');
+  const [enrichModel, setEnrichModel] = useState<'gemini-1.5-flash-latest' | 'gemini-1.5-pro-latest' | 'gemini-1.0-pro'>('gemini-1.5-flash-latest');
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' | null }>({ text: '', type: null });
@@ -70,8 +70,13 @@ export default function ProspectorPage() {
   const [selectedPlacesIds, setSelectedPlacesIds] = useState<string[]>([]);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, status: '' });
   const [isBulkRunning, setIsBulkRunning] = useState(false);
+  
+  // Endpoint state
+  const [showEndpointForm, setShowEndpointForm] = useState(false);
+  const [newEndpoint, setNewEndpoint] = useState({ slug: '', city: '', state: '', category: '', limit: 50 });
 
   const { data: placesData, mutate: refreshPlaces, isLoading: isLoadingPlaces } = useSWR<any>('/api/places', fetcher);
+  const { data: endpointsData, mutate: refreshEndpoints } = useSWR<any>('/api/admin/endpoints', fetcher);
 
   const places = useMemo(() => {
     return Array.isArray(placesData) ? placesData as Place[] : [];
@@ -336,6 +341,71 @@ export default function ProspectorPage() {
     }
   };
 
+  const handleCreateEndpoint = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/endpoints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEndpoint),
+      });
+      if (res.ok) {
+        setMessage({ text: 'Endpoint criado com sucesso!', type: 'success' });
+        refreshEndpoints();
+        setShowEndpointForm(false);
+        setNewEndpoint({ slug: '', city: '', state: '', category: '', limit: 50 });
+      } else {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro ao criar endpoint');
+      }
+    } catch (error: any) {
+      setMessage({ text: error.message, type: 'error' });
+    }
+  };
+
+  const handleDeleteEndpoint = async (id: string) => {
+    if (!confirm('Deseja excluir este endpoint?')) return;
+    try {
+      const res = await fetch(`/api/admin/endpoints?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setMessage({ text: 'Endpoint removido.', type: 'success' });
+        refreshEndpoints();
+      }
+    } catch (error: any) {
+      setMessage({ text: error.message, type: 'error' });
+    }
+  };
+
+  const handleBulkEditCategory = async () => {
+    if (selectedPlacesIds.length === 0) return;
+    const newCat = prompt('Digite a nova categoria para os locais selecionados:');
+    if (!newCat) return;
+
+    setIsBulkRunning(true);
+    setBulkProgress({ current: 0, total: selectedPlacesIds.length, status: 'Atualizando categorias...' });
+
+    try {
+      const placesToUpdate = places
+        .filter(p => selectedPlacesIds.includes(p.osm_id))
+        .map(p => ({ ...p, category: newCat, last_updated: new Date().toISOString() }));
+
+      await fetch('/api/places/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ places: placesToUpdate }),
+      });
+
+      setMessage({ text: `${placesToUpdate.length} locais atualizados.`, type: 'success' });
+      refreshPlaces();
+      setSelectedPlacesIds([]);
+    } catch (error: any) {
+      setMessage({ text: 'Erro na edição em massa: ' + error.message, type: 'error' });
+    } finally {
+      setIsBulkRunning(false);
+      setBulkProgress({ current: 0, total: 0, status: '' });
+    }
+  };
+
   const handleBulkEnrich = async () => {
     const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     if (!geminiApiKey) {
@@ -547,90 +617,189 @@ export default function ProspectorPage() {
         <AnimatePresence>
           {isManagementOpen && (
             <motion.div 
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="bg-gray-900 text-white rounded-2xl p-6 mb-8 shadow-xl border border-gray-800"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-gray-900 text-white rounded-3xl p-8 mb-8 shadow-2xl border border-gray-800"
             >
-              <div className="flex flex-col md:flex-row gap-8">
-                <div className="flex-1 space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-500 rounded-lg">
-                      <Zap className="w-5 h-5 text-white" />
+              <div className="flex flex-col lg:flex-row gap-12">
+                <div className="flex-1 space-y-8">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg shadow-blue-500/20">
+                        <Zap className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <h2 className="font-bold text-xl tracking-tight">AI Command Center</h2>
+                        <p className="text-sm text-gray-400">Gerenciamento avançado multimodelo e automação.</p>
+                      </div>
                     </div>
-                    <div>
-                      <h2 className="font-bold text-lg">IA Management Center</h2>
-                      <p className="text-xs text-gray-400">Gerenciamento inteligente e automação de banco de dados.</p>
+                    
+                    <div className="flex bg-gray-800 p-1 rounded-xl border border-gray-700">
+                      <button 
+                        onClick={() => setEnrichModel('gemini-1.5-flash-latest')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${enrichModel === 'gemini-1.5-flash-latest' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                      >
+                        1.5 FLASH
+                      </button>
+                      <button 
+                        onClick={() => setEnrichModel('gemini-1.5-pro-latest')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${enrichModel === 'gemini-1.5-pro-latest' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                      >
+                        1.5 PRO
+                      </button>
+                      <button 
+                        onClick={() => setEnrichModel('gemini-1.0-pro')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${enrichModel === 'gemini-1.0-pro' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                      >
+                        1.0 PRO
+                      </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
-                      <p className="text-xs font-bold text-gray-500 uppercase mb-3">Enriquecimento em Massa</p>
-                      <p className="text-sm text-gray-300 mb-4">Atualiza dados detalhados via Google Search para os locais selecionados.</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-blue-400 bg-blue-400/10 px-2 py-1 rounded">
-                          Modelo: {enrichModel.includes('lite') ? 'Ilimitado (Lite)' : 'Cota Normal'}
-                        </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Bulk Actions */}
+                    <div className="p-6 bg-gray-800/40 rounded-2xl border border-gray-700/50 backdrop-blur-sm">
+                      <div className="flex items-center gap-2 mb-4">
+                        <ListChecks className="w-4 h-4 text-blue-400" />
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Ações em Massa</p>
                       </div>
-                      <button 
-                        onClick={handleBulkEnrich}
-                        disabled={selectedPlacesIds.length === 0 || isBulkRunning}
-                        className="w-full mt-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all"
-                      >
-                        <ListChecks className="w-4 h-4" />
-                        Executar Fila ({selectedPlacesIds.length})
-                      </button>
-                    </div>
-
-                    <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
-                      <p className="text-xs font-bold text-gray-500 uppercase mb-3">Limpeza & Faxina IA</p>
-                      <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-3">
+                        <button 
+                          onClick={handleBulkEnrich}
+                          disabled={selectedPlacesIds.length === 0 || isBulkRunning}
+                          className="py-3 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-xl text-xs font-bold flex flex-col items-center gap-2 transition-all disabled:opacity-30"
+                        >
+                          <Zap className="w-5 h-5" />
+                          Enriquecer ({selectedPlacesIds.length})
+                        </button>
+                        <button 
+                          onClick={handleBulkEditCategory}
+                          disabled={selectedPlacesIds.length === 0 || isBulkRunning}
+                          className="py-3 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-bold flex flex-col items-center gap-2 transition-all disabled:opacity-30"
+                        >
+                          <Settings className="w-5 h-5" />
+                          Editar Categoria
+                        </button>
+                      </div>
+                      
+                      <div className="mt-6 space-y-2">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase mb-2">Faxina Inteligente</p>
                         <button 
                           onClick={() => handleCleanup('no-address')}
-                          disabled={isBulkRunning}
-                          className="w-full py-2 bg-gray-700 hover:bg-red-900/30 text-xs rounded-lg flex items-center justify-between px-3 transition-colors"
+                          className="w-full py-2.5 bg-gray-800 hover:bg-red-500/10 text-gray-300 hover:text-red-400 border border-gray-700 rounded-lg text-[11px] flex items-center justify-between px-4 transition-all"
                         >
-                          <span>Remover locais sem endereço</span>
-                          <Trash2 className="w-3 h-3 text-red-400" />
-                        </button>
-                        <button 
-                          onClick={() => handleCleanup('no-phone')}
-                          disabled={isBulkRunning}
-                          className="w-full py-2 bg-gray-700 hover:bg-red-900/30 text-xs rounded-lg flex items-center justify-between px-3 transition-colors"
-                        >
-                          <span>Remover locais sem telefone</span>
-                          <Trash2 className="w-3 h-3 text-red-500" />
+                          <span>Remover locais sem endereço completo</span>
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
+                    </div>
+
+                    {/* Endpoint Creator */}
+                    <div className="p-6 bg-gray-800/40 rounded-2xl border border-gray-700/50 backdrop-blur-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <ExternalLink className="w-4 h-4 text-emerald-400" />
+                          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Endpoints Externos</p>
+                        </div>
+                        <button 
+                          onClick={() => setShowEndpointForm(!showEndpointForm)}
+                          className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-md font-bold hover:bg-emerald-500/30 transition-colors"
+                        >
+                          {showEndpointForm ? 'CANCELAR' : 'NOVO LINK'}
+                        </button>
+                      </div>
+
+                      {showEndpointForm ? (
+                        <form onSubmit={handleCreateEndpoint} className="space-y-3">
+                          <input 
+                            placeholder="Slug (ex: restaurante-sp)"
+                            value={newEndpoint.slug}
+                            onChange={e => setNewEndpoint({...newEndpoint, slug: e.target.value})}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
+                            required
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input 
+                              placeholder="Cidade"
+                              value={newEndpoint.city}
+                              onChange={e => setNewEndpoint({...newEndpoint, city: e.target.value})}
+                              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs outline-none"
+                            />
+                            <input 
+                              placeholder="Categoria"
+                              value={newEndpoint.category}
+                              onChange={e => setNewEndpoint({...newEndpoint, category: e.target.value})}
+                              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs outline-none"
+                            />
+                          </div>
+                          <button type="submit" className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-bold transition-all shadow-lg shadow-emerald-600/20">
+                            Gerar Endpoint
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                          {endpointsData?.length > 0 ? (
+                            endpointsData.map((e: any) => (
+                              <div key={e.id} className="p-3 bg-gray-900 rounded-xl border border-gray-700 flex items-center justify-between group">
+                                <div className="truncate">
+                                  <p className="text-xs font-bold text-gray-200">/api/e/{e.slug}</p>
+                                  <p className="text-[10px] text-gray-500">{e.city || 'Todas'} • {e.category || 'Geral'}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <a href={`/api/e/${e.slug}`} target="_blank" rel="noreferrer" className="p-1.5 hover:bg-gray-800 rounded-lg text-blue-400 opacity-0 group-hover:opacity-100 transition-all">
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                  <button onClick={() => handleDeleteEndpoint(e.id)} className="p-1.5 hover:bg-gray-800 rounded-lg text-red-400 opacity-0 group-hover:opacity-100 transition-all">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-[10px] text-gray-600 text-center py-4">Nenhum endpoint criado.</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                <div className="w-full md:w-64 space-y-4">
-                  <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-                    <p className="text-xs font-bold text-gray-500 uppercase mb-3">Status da Fila</p>
+                <div className="w-full lg:w-72">
+                  <div className="bg-gray-800/80 border border-white/5 rounded-3xl p-6 h-full backdrop-blur-xl">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Pipeline IA</p>
                     {isBulkRunning ? (
-                      <div className="space-y-3">
-                        <div className="flex justify-between text-xs font-medium">
-                          <span className="animate-pulse text-blue-400">Processando...</span>
-                          <span>{bulkProgress.current} / {bulkProgress.total}</span>
-                        </div>
-                        <div className="w-full bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                      <div className="space-y-4">
+                        <div className="relative h-2 w-full bg-gray-700 rounded-full overflow-hidden">
                           <motion.div 
                             initial={{ width: 0 }}
                             animate={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
-                            className="bg-blue-500 h-full"
+                            className="absolute inset-y-0 bg-gradient-to-r from-blue-500 to-indigo-500"
                           />
                         </div>
-                        <p className="text-[10px] text-gray-400 truncate">{bulkProgress.status}</p>
+                        <div className="flex justify-between text-[11px] font-bold">
+                          <span className="text-blue-400 animate-pulse uppercase tracking-tighter">PROCESSANDO...</span>
+                          <span className="text-gray-300">{bulkProgress.current} / {bulkProgress.total}</span>
+                        </div>
+                        <div className="p-3 bg-gray-900 rounded-xl border border-gray-700">
+                          <p className="text-[10px] text-gray-400 leading-relaxed italic">{bulkProgress.status}</p>
+                        </div>
                       </div>
                     ) : (
-                      <div className="text-center py-4 text-gray-500">
-                        <CheckCircle2 className="w-8 h-8 mx-auto opacity-20 mb-2" />
-                        <p className="text-xs">Fila ociosa.</p>
+                      <div className="flex flex-col items-center justify-center py-8 text-center">
+                        <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center border border-gray-700 mb-4">
+                          <CheckCircle2 className="w-8 h-8 text-gray-700" />
+                        </div>
+                        <p className="text-xs font-medium text-gray-500">Pipeline aguardando comandos.</p>
+                        <p className="text-[10px] text-gray-600 mt-2 px-4 italic">Selecione locais na tabela abaixo para iniciar o enriquecimento em massa.</p>
                       </div>
                     )}
+                    
+                    <div className="mt-8 pt-6 border-t border-gray-700">
+                      <p className="text-[9px] text-gray-600 leading-relaxed">
+                        * O modelo <span className="text-gray-400 font-bold">Flash</span> é recomendado para prospecção em massa por possuir maiores limites de cota.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -67,14 +67,63 @@ export async function getPlacesNeedsEnrichment(limit = 5) {
   return data;
 }
 
-/**
- * Função para inserir ou atualizar locais (Upsert).
- */
 export async function upsertPlaces(places: any[]) {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('places')
     .upsert(places, { onConflict: 'osm_id' });
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Funções para Endpoints Customizados
+ */
+export async function getAllEndpoints() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('endpoints')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+export async function createEndpoint(endpoint: any) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('endpoints')
+    .insert([endpoint])
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteEndpoint(id: string) {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from('endpoints')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
+export async function getPlacesByFilter(city?: string, state?: string, category?: string, limit = 50) {
+  const supabase = getSupabase();
+  let query = supabase.from('places').select('*');
+
+  if (city) query = query.ilike('address', `%${city}%`);
+  // Note: state is often in address as well
+  if (state) query = query.ilike('address', `%${state}%`);
+  if (category) query = query.ilike('category', `%${category}%`);
+
+  const { data, error } = await query
+    .limit(limit)
+    .order('last_updated', { ascending: false });
 
   if (error) throw error;
   return data;
