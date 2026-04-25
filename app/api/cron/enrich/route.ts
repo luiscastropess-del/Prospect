@@ -33,7 +33,7 @@ async function handleEnrichCron() {
       try {
         // Enriquecimento usando Gemini Flash Lite (mais estável para automação)
         const response = await ai.models.generateContent({
-          model: "gemini-3.1-flash-lite-preview",
+          model: "gemini-1.5-flash-latest",
           contents: `
             Analise o estabelecimento localizado no BRASIL e encontre as informações completas no GOOGLE PLACES para completar o banco de dados:
             Nome: ${place.name}

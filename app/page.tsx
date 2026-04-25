@@ -417,7 +417,7 @@ export default function ProspectorPage() {
 
     // Limite de 5 se não for o modelo Lite para evitar erros de cota (conforme solicitado)
     let placesToProcess = selectedPlacesIds;
-    if (enrichModel !== 'gemini-3.1-flash-lite-preview' && placesToProcess.length > 5) {
+    if (enrichModel !== 'gemini-1.5-flash-latest' && placesToProcess.length > 5) {
       placesToProcess = placesToProcess.slice(0, 5);
       setMessage({ text: 'Limite de 5 locais por vez aplicado para este modelo de IA.', type: 'error' });
     }
@@ -1147,9 +1147,9 @@ export default function ProspectorPage() {
                         className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none"
                         title="Selecione o modelo de IA"
                       >
-                        <option value="gemini-3.1-flash-lite-preview">Flash Lite (Ilimitado/Rápido)</option>
-                        <option value="gemini-flash-latest">Flash Latest (Ilimitado/Padrão)</option>
-                        <option value="gemini-3.1-pro-preview">Pro (Ilimitado/Inteligente)</option>
+                        <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash (Padrão)</option>
+                        <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro (Inteligente)</option>
+                        <option value="gemini-1.0-pro">Gemini 1.0 Pro (Antigo)</option>
                       </select>
                       <button 
                         onClick={() => handleEnrich(selectedPlace.osm_id)}
