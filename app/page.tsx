@@ -157,17 +157,18 @@ export default function ProspectorPage() {
       const response = await ai.models.generateContent({
         model: enrichModel,
         contents: `
-          Analise o estabelecimento localizado no BRASIL e encontre as informações completas:
+          Analise o estabelecimento localizado no BRASIL e encontre as informações completas no Google Places:
           Nome: ${placeToEnrich.name}
           Endereço: ${placeToEnrich.address}
           Categoria: ${placeToEnrich.category}
           
-          Use a pesquisa do Google para encontrar obrigatoriamente:
+          Use a pesquisa do Google para encontrar obrigatoriamente no GOOGLE PLACES:
           - Endereço completo com Cidade, Estado e CEP (CEP/ZIP CODE).
           - Descrição detalhada (mínimo 200 caracteres).
           - Horário de funcionamento preciso.
           - Website e Telefone oficiais.
-          - Logo URL e 5 URLs de fotos reais da galeria do local.
+          - Logo/Imagem de Perfil oficial (logo_url).
+          - 5 URLs de fotos reais da galeria do local (gallery_urls).
           - 5 comentários reais de clientes.
           - Avaliação média.
           
@@ -205,7 +206,7 @@ export default function ProspectorPage() {
                 }
               }
             },
-            required: ["full_address", "city", "state", "zip_code", "description"]
+            required: ["full_address", "city", "state", "zip_code", "description", "logo_url", "gallery_urls"]
           }
         }
       });
@@ -241,6 +242,17 @@ export default function ProspectorPage() {
       });
 
       if (saveRes.ok) {
+        // Encaminhar para a API Final
+        try {
+          await fetch('/api/final', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source: 'manual-enrichment', places: [enrichedPlace] }),
+          });
+        } catch (e) {
+          console.warn('Erro ao encaminhar para API Final:', e);
+        }
+
         setMessage({ text: 'Local enriquecido com IA Pro e salvo com sucesso!', type: 'success' });
         refreshPlaces();
         setSelectedPlace(enrichedPlace);
@@ -356,12 +368,18 @@ export default function ProspectorPage() {
         const response = await ai.models.generateContent({
           model: enrichModel,
           contents: `
-            Analise o estabelecimento localizado no BRASIL e encontre as informações completas:
+            Analise o estabelecimento localizado no BRASIL e encontre as informações completas no GOOGLE PLACES:
             Nome: ${place.name}
             Endereço: ${place.address}
             Categoria: ${place.category}
             
             Retorne um JSON completo incluindo Cidade, Estado e CEP (CEP/ZIP CODE).
+            Obtenha obrigatoriamente:
+            - Logo/Imagem de perfil (logo_url)
+            - 5 imagens reais da galeria (gallery_urls)
+            - Descrição detalhada
+            - Contatos e Horários
+            
             Se o local não for no Brasil, ignore.
           `,
           config: {
@@ -380,8 +398,12 @@ export default function ProspectorPage() {
                 website: { type: Type.STRING },
                 logo_url: { type: Type.STRING },
                 rating: { type: Type.STRING },
+                gallery_urls: { 
+                  type: Type.ARRAY, 
+                  items: { type: Type.STRING } 
+                },
               },
-              required: ["full_address", "city", "state", "zip_code", "description"]
+              required: ["full_address", "city", "state", "zip_code", "description", "logo_url", "gallery_urls"]
             }
           }
         });
@@ -402,6 +424,7 @@ export default function ProspectorPage() {
           phone: aiData.phone || place.phone,
           website: aiData.website || place.website,
           logo_url: aiData.logo_url || place.logo_url,
+          gallery_urls: aiData.gallery_urls || [],
           rating: aiData.rating || place.rating,
           last_updated: new Date().toISOString()
         };
@@ -411,6 +434,17 @@ export default function ProspectorPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ places: [enriched] }),
         });
+
+        // Encaminhar para a API Final
+        try {
+          await fetch('/api/final', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source: 'bulk-enrichment', places: [enriched] }),
+          });
+        } catch (e) {
+          console.warn('Erro ao encaminhar para API Final:', e);
+        }
 
         // Pequeno delay para respirar entre chamadas
         await new Promise(resolve => setTimeout(resolve, 500));

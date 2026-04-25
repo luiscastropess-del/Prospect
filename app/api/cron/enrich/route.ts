@@ -35,15 +35,20 @@ async function handleEnrichCron() {
         const response = await ai.models.generateContent({
           model: "gemini-3.1-flash-lite-preview",
           contents: `
-            Analise o estabelecimento localizado no BRASIL e encontre as informações faltantes:
+            Analise o estabelecimento localizado no BRASIL e encontre as informações completas no GOOGLE PLACES para completar o banco de dados:
             Nome: ${place.name}
             Endereço Atual: ${place.address}
             Categoria: ${place.category}
             
             IMPORTANTE: O endereço deve ser completo (Logradouro, Número, Bairro, Cidade, Estado e CEP).
+            Obtenha obrigatoriamente:
+            - Logo/Imagem de perfil oficial (logo_url)
+            - 5 URLs de imagens reais da galeria (gallery_urls)
+            - Descrição detalhada (mínimo 200 caracteres)
+            
             Se o local não for no Brasil, retorne campos vazios e ignore.
             
-            Retorne JSON: full_address, city, state, zip_code, description (min 200 char), opening_hours, phone, website, logo_url, rating.
+            Retorne JSON: full_address, city, state, zip_code, description, opening_hours, phone, website, logo_url, rating, gallery_urls.
           `,
           config: {
             tools: [{ googleSearch: {} }],
@@ -61,8 +66,12 @@ async function handleEnrichCron() {
                 website: { type: Type.STRING },
                 logo_url: { type: Type.STRING },
                 rating: { type: Type.STRING },
+                gallery_urls: { 
+                  type: Type.ARRAY, 
+                  items: { type: Type.STRING } 
+                },
               },
-              required: ["full_address", "city", "state", "zip_code", "description"]
+              required: ["full_address", "city", "state", "zip_code", "description", "logo_url", "gallery_urls"]
             }
           }
         });
@@ -85,6 +94,7 @@ async function handleEnrichCron() {
           phone: aiData.phone || place.phone,
           website: aiData.website || place.website,
           logo_url: aiData.logo_url || place.logo_url,
+          gallery_urls: aiData.gallery_urls || [],
           rating: aiData.rating || place.rating,
           last_updated: new Date().toISOString()
         };
