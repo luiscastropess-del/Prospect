@@ -389,17 +389,48 @@ export default function ProspectorPage() {
         .filter(p => selectedPlacesIds.includes(p.osm_id))
         .map(p => ({ ...p, category: newCat, last_updated: new Date().toISOString() }));
 
-      await fetch('/api/places/save', {
+      const res = await fetch('/api/places/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ places: placesToUpdate }),
       });
 
-      setMessage({ text: `${placesToUpdate.length} locais atualizados.`, type: 'success' });
+      if (!res.ok) throw new Error('Erro ao salvar no servidor');
+
+      setMessage({ text: `${placesToUpdate.length} locais atualizados com sucesso!`, type: 'success' });
       refreshPlaces();
       setSelectedPlacesIds([]);
     } catch (error: any) {
       setMessage({ text: 'Erro na edição em massa: ' + error.message, type: 'error' });
+    } finally {
+      setIsBulkRunning(false);
+      setBulkProgress({ current: 0, total: 0, status: '' });
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedPlacesIds.length === 0) return;
+    if (!confirm(`Deseja excluir permanentemente os ${selectedPlacesIds.length} locais selecionados?`)) return;
+
+    setIsBulkRunning(true);
+    setBulkProgress({ current: 0, total: 1, status: 'Removendo selecionados...' });
+
+    try {
+      const res = await fetch('/api/places/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedPlacesIds }),
+      });
+
+      if (res.ok) {
+        setMessage({ text: `${selectedPlacesIds.length} locais removidos do banco.`, type: 'success' });
+        refreshPlaces();
+        setSelectedPlacesIds([]);
+      } else {
+        throw new Error('Erro ao excluir do servidor');
+      }
+    } catch (error: any) {
+      setMessage({ text: 'Erro na exclusão: ' + error.message, type: 'error' });
     } finally {
       setIsBulkRunning(false);
       setBulkProgress({ current: 0, total: 0, status: '' });
@@ -674,12 +705,12 @@ export default function ProspectorPage() {
                           Enriquecer ({selectedPlacesIds.length})
                         </button>
                         <button 
-                          onClick={handleBulkEditCategory}
+                          onClick={handleBulkDelete}
                           disabled={selectedPlacesIds.length === 0 || isBulkRunning}
-                          className="py-3 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 rounded-xl text-xs font-bold flex flex-col items-center gap-2 transition-all disabled:opacity-30"
+                          className="py-3 bg-red-600/10 hover:bg-red-600/20 text-red-100 border border-red-500/30 rounded-xl text-xs font-bold flex flex-col items-center gap-2 transition-all disabled:opacity-30"
                         >
-                          <Settings className="w-5 h-5" />
-                          Editar Categoria
+                          <Trash2 className="w-5 h-5 text-red-500" />
+                          Excluir Seleção
                         </button>
                       </div>
                       

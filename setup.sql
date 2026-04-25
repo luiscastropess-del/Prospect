@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS public.endpoints (
     city TEXT,
     state TEXT,
     category TEXT,
-    "limit" INTEGER DEFAULT 50, -- Usando aspas duplas pois 'limit' é palavra reservada
+    results_limit INTEGER DEFAULT 50,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

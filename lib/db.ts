@@ -112,7 +112,7 @@ export async function deleteEndpoint(id: string) {
   if (error) throw error;
 }
 
-export async function getPlacesByFilter(city?: string, state?: string, category?: string, limit = 50) {
+export async function getPlacesByFilter(city?: string, state?: string, category?: string, results_limit = 50) {
   const supabase = getSupabase();
   let query = supabase.from('places').select('*');
 
@@ -122,7 +122,7 @@ export async function getPlacesByFilter(city?: string, state?: string, category?
   if (category) query = query.ilike('category', `%${category}%`);
 
   const { data, error } = await query
-    .limit(limit)
+    .limit(results_limit)
     .order('last_updated', { ascending: false });
 
   if (error) throw error;

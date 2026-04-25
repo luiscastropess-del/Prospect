@@ -24,7 +24,7 @@ export async function POST(req: Request) {
       city: city || null,
       state: state || null,
       category: category || null,
-      limit: limit || 50,
+      results_limit: limit || 50,
       created_at: new Date().toISOString()
     };
 

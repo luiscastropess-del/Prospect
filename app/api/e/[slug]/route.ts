@@ -25,7 +25,7 @@ export async function GET(
       endpoint.city,
       endpoint.state,
       endpoint.category,
-      endpoint.limit
+      endpoint.results_limit
     );
 
     return NextResponse.json({
